@@ -1,2 +1,2 @@
-# Welcome to dATAmININGgROUP6
-What you gonna contribute today?
+# What you gonna contribute today?
+Welcome to dATAmININGgROUP6
