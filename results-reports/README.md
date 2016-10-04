@@ -1,4 +1,4 @@
-##results-repots **sharing** in following formats:
+##results_repots **sharing** in following formats:
 ~~Make it beautiful dude~~
 
 - **csv file** (tarek-data.csv)
