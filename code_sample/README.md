@@ -1,4 +1,4 @@
-##code_sample **sharing** in following formats:
+##code_samples **sharing** in following formats:
 ~~Make it beautiful dude~~
 
 - **code file** (tarek-code.R)
