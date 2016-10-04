@@ -1,6 +1,6 @@
 ##code_samples **sharing** in following formats:
 ~~Make it beautiful dude~~  
-If you can, shared the codes with its original link to the blog or wherever you got it.
+If you may, share the codes with its original link to the blog or wherever you got it.
 
 - **code file** (tarek-code.R)
 - **markdown file** (love-readme.md)  
