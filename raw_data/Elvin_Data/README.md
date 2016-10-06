@@ -3,15 +3,11 @@
 
 1. To get started, open the [(sourcing) run_tweet_update.R](https://github.com/gwds/dmg6/blob/master/raw_data/Elvin_Data/(sourcing)%20run_tweet_update.R) and follow the *STEPs* specified in the document
   + Use *setwd()* to direct working directory to the root folder containing these scripts before running the program
+  + Create your own Twitter API tokens and secrets at [this link](https://apps.twitter.com/) and paste your credentials into [Twitter API Set-up.R](https://github.com/gwds/dmg6/blob/master/raw_data/Elvin_Data/scripts/Twitter%20API%20Set-up.R). Save the script and the sourcing code will automatically set up the API link for you
   + When prompted by R to enter expected dates, **type entires according to the expected formats**; otherwise the system would run into error
 2. R scripts containing global parameters and functions are included in the [scripts](https://github.com/gwds/dmg6/tree/master/raw_data/Elvin_Data/scripts) folder. In order to sucessfully run the program, **users need to download these files**
-3. 
-
-
-
-
-
-
+3. To have a quick look at the aggregated dataset sample, check out [tweet_database.csv](https://github.com/gwds/dmg6/blob/master/results_reports/Elvin%20Results/tweet_database.csv). To quickly check out the download log file, check out [download_log.csv](https://github.com/gwds/dmg6/blob/master/results_reports/Elvin%20Results/download_log.csv)
+4. __**Future updates will include sourced scripts that will automatically complete data cleaning, text mining, and more.**__ 
 
 ##Findings about Twitter API
 1.  __**Backward search limitation**__: The API seems to fail to fetch information more than 8 days ago! I am not sure about this; please try out day by day to see if you also cannot find tweets more than 8 days old!
