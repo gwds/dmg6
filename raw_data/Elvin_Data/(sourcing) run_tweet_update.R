@@ -1,5 +1,5 @@
 # STEP ONE: SET UP STAGE
-setwd("C:\\Users\\oycy\\Desktop\\twitteR Data Collection")
+setwd("set_the_root_folder_path_here")
 
 source("scripts\\Twitter API Set-up.R")
 # Set up Twitter API
