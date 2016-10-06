@@ -1,58 +1,27 @@
-###  Below is log records for each batch downloaded from Twitter API ###
+library(twitteR)
 
+# Batch Database Name:
+tweet_df
 
-# tw0 Batch
-tw0 <- searchTwitter("@JetBlue",
-                    n=3000,
-                    since = "2016-09-30",
-                    until = "2016-10-01",
-                    resultType = "recent",
-                    retryOnRateLimit = 1000)
-tw0_df <- twListToDF(tw0)
-class(tw0_df$created)
-range(tw0_df$created)
-# tw0: "2016-09-30 00:00:02 UTC" "2016-09-30 23:56:09 UTC"
+# Write into csv file:
+write.csv(tweet_df, file = "tweet_database_version_date.csv",
+          eol = "\n", na = "NA", row.names = FALSE)
 
-# tw Batch
-tw <- searchTwitter("@JetBlue",
-                    n=3000,
-                    since = "2016-09-01",
-                    until = "2016-09-30",
-                    resultType = "recent",
-                    retryOnRateLimit = 1000)
+# Batch Record:
+range(tweet_df$created)
+# "2016-09-26 02:10:47 UTC" "2016-10-04 23:59:45 UTC"
 
-tw_df <- twListToDF(tw)
+# Standard Batch Query Code:#
+tw_n <- searchTwitter("@JetBlue",
+                      n=3000,
+                      since = "start_date_inclusive",
+                      until = "end_date_exclusive",
+                      resultType = "recent",
+                      retryOnRateLimit = 1000)
+tw_n_df <- twListToDF(tw_n)
+class(tw_n_df$created)
+range(tw_n_df$created)
 
-class(tw_df$created)
-range(tw_df$created)
-# tw: "2016-09-26 02:10:47 UTC" "2016-09-29 23:58:53 UTC"
-
-#tw1 Batch
-tw1 <- searchTwitter("@JetBlue",
-                    n=1000,
-                    since = "2016-10-01",
-                    until = "2016-10-02",
-                    resultType = "recent",
-                    retryOnRateLimit = 1000)
-
-tw1_df <- twListToDF(tw1)
-
-class(tw1_df$created)
-range(tw1_df$created)
-# tw1: "2016-10-01 00:00:40 UTC" "2016-10-01 23:59:32 UTC"
-
-# tw2 Batch
-tw2 <- searchTwitter("@JetBlue",
-                     n=100000,
-                     since = "2016-10-02",
-                     until = "2016-10-05",
-                     resultType = "recent",
-                     retryOnRateLimit = 1000)
-
-tw2_df <- twListToDF(tw2)
-
-class(tw2_df$created)
-range(tw2_df$created)
-# "2016-10-02 00:00:19 UTC" "2016-10-04 23:59:45 UTC"
-
-
+# If above all confirmed, append to the Batch Database:
+tweet_df <- read.csv("tweet_database_v1_10.05.csv")
+tweet_df <- cbind(tweet_df, tw_n_df)
