@@ -1,0 +1,182 @@
+---
+title: "DATA MINING PROJECT JET BLUE SENTIMENTS"
+author: "Tarek Elduzdar"
+date: "October 6, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This document is to show the code used to clean and create a Document Term Matrix for Tweets related to JETBLUE. 
+
+#Check Data Structure
+
+```{r}
+load(file="tweets.df.RData")
+str(tweets.df)
+```
+
+#Load tm Package
+```{r}
+library(tm)
+```
+
+##CREATE A CORPUS OF TEXT
+```{r}
+tweets_corpus<- VCorpus(VectorSource(tweets.df$text))
+```
+#Print Number of Documents 
+```{r}
+print(tweets_corpus)
+```
+#TO GET SPECIFIC MESSAGE SUMMARY
+```{r}
+inspect(tweets_corpus[1:2])
+```
+#TO READ SPECIFIC MESSAGE TEXT
+```{r}
+as.character(tweets_corpus[[4]])
+```
+
+##CLEANING THE CORPUS
+#TO AVOID TOLOWER ERROR WHEN FINDING AN EMOJI IN TEXT (NON GRAPHICAL TEXT) I FOUND THIS FUNCTION USED TO SKIP ERROR AND CONTINUE TOLOWER
+```{r}
+tryTolower = function(x)
+{
+  # create missing value
+  # this is where the returned value will be
+  y = NA
+  # tryCatch error
+  try_error = tryCatch(tolower(x), error = function(e) e)
+  # if not an error
+  if (!inherits(try_error, "error"))
+    y = tolower(x)
+  return(y)
+}
+```
+#NOW USE THE TOLOWER WITH THE TRYLOWER FUNCTION TO LOWERCASE THE CORPUS TEXT
+```{r}
+tweets_corpus_clean<-sapply(tweets_corpus, function(x) tryTolower(x))
+
+```
+#CHANGE TYPE TO VCORPUS
+```{r}
+tweets_corpus_clean<- VCorpus(VectorSource(tweets_corpus_clean))
+tweets_corpus_clean<- tm_map(tweets_corpus_clean,content_transformer(tolower))
+```
+#TO CHECK LOWERCASE IS DONE
+```{r}
+as.character(tweets_corpus[[12]])
+as.character(tweets_corpus_clean[[12]])
+```
+#REMOVE NUMBERS FROM CORPUS TEXT
+```{r}
+tweets_corpus_clean<- tm_map(tweets_corpus_clean,removeNumbers)
+```
+#CHECK NUMBERS ARE REMOVED
+```{r}
+as.character(tweets_corpus[[11]])
+as.character(tweets_corpus_clean[[11]])
+```
+#REMOVE STOP WORDS FROM CORPUS TEXT
+```{r}
+tweets_corpus_clean<-tm_map(tweets_corpus_clean,removeWords,stopwords())
+```
+#CHECK STOP WORDS ARE REMOVED
+```{r}
+as.character(tweets_corpus[[11]])
+as.character(tweets_corpus_clean[[11]])
+```
+#CREATE A REPLACE PUNCYUATION FUNCTION (REPLACE ... WITH BLANKS RATEHR THAN REMOVE)
+```{r}
+replacePunctuation<- function(x){
+  gsub("[[:punct:]]+"," ",x)  
+}
+```
+#TEST FUNCTION
+```{r}
+replacePunctuation("Give me a .. break")
+```
+#REMOVE PUNCTUATION FROM CORPUS TEXT 
+```{r}
+tweets_corpus_clean<-tm_map(tweets_corpus_clean,content_transformer(replacePunctuation))
+```
+#CHECK PUNCTUATIONS ARE REPLACED BY BLANKS
+```{r}
+as.character(tweets_corpus[[11]])
+as.character(tweets_corpus_clean[[11]])
+```
+#STEMMING OF THE WORDS IN THE CORPUS TEXT
+```{r}
+library(SnowballC)
+tweets_corpus_clean<-tm_map(tweets_corpus_clean, stemDocument,language="english")
+```
+#CHECK STEMMING OF WORDS
+```{r}
+as.character(tweets_corpus[[29]])
+as.character(tweets_corpus_clean[[29]])
+```
+# WHEN YOU CHECK THE STEMMING, AS YOU CAN SEE THERE IS SOME WORDS THAT ARE STEMMED WRONG SUCH AS "REQIRES"--"REQUIR" and "EXPERIENCE"--"EXPERI" AND "JETBLUE" TO "JETBLU". HOWEVER I THINK IT WILL BE ENOUGH TO DO THE JOB, BUT MAYBE WE CAN SEARCH FOR A BETTER STEMMIN FUNCTION IN OTHER PACKAGES
+
+#STRIP WHITE SPACE FROM THE CORPUS TEXT
+```{r}
+tweets_corpus_clean<-tm_map(tweets_corpus_clean,stripWhitespace)
+```
+#CHECK WHITE SPACE IS REMOVED
+```{r}
+as.character(tweets_corpus[[6]])
+as.character(tweets_corpus_clean[[6]])
+```
+
+##TOKENIZATION OF TEXT DOC INTO WORDS
+#CREATE A DOCUMENT TERM MATRIX
+```{r}
+tweets_dtm<-DocumentTermMatrix(tweets_corpus_clean)
+```
+##VISUALIZE TEXT DATA
+#LOAD THE WORDCLOUD PACKAGE
+```{r}
+library(wordcloud)
+```
+#CHECK THE MOST FREQUENT WORDS
+```{r}
+wordcloud(tweets_corpus_clean,min.freq = 50,random.order = FALSE,scale=c(7, .6),colors=brewer.pal(6, "Dark2"))
+```
+
+
+
+##REDUCE THE DATA (REMOVE WORDS OF FEW FREQUENCY)
+#GET WORDS WITH THE LEAST FREQUENCY OF 5 TIMES
+```{r}
+tweets_freq_words<-findFreqTerms(tweets_dtm,5)
+```
+#REDUCE THE DTM SIZE WITH THE MOST IMPORTANT FREQUENT WORDS
+```{r}
+tweets_dtm_reduced<-tweets_dtm[,tweets_freq_words]
+```
+## I FOUND THIS TIDYTEXT PACKAGE SENTIMENT ANALYSIS SO I GAVE IT A TRY
+#LOAD tidytext package
+```{r}
+library(tidytext)
+library(dplyr)
+```
+
+```{r}
+ap_td <- tidy(tweets_dtm_reduced)
+
+bing <- sentiments %>%
+  filter(lexicon == "bing") %>%
+  select(word, sentiment)
+
+ap_sentiments <- ap_td %>%
+  inner_join(bing, by = c(term = "word"))
+
+str(ap_sentiments)
+head(subset(sentiments,sentiment=="positive"),20)
+tail(subset(sentiments,sentiment=="negative"),20)
+```
+
