@@ -1,0 +1,243 @@
+---
+title: "6103-proposal-milestone3"
+author: "Strayn"
+output: word_document
+---
+
+# 0.Prepare for the analysis
+
+Our goal is to build a **text miner**(or semantic analyzer, whatever you would call it), that requires a machine to label the right sentiment to the text we have, basically it requires 3 things to be done:  
+1. **Get the data**, which contains text and sentiment.  
+2. **Build a miner** to understand the text.  
+3. **Build a learner** to find relationship between text and sentiment.  
+
+For the 1st step, our kaggle dataset contains everything we need in 4 categories:  
+who: **USERS**  
+what: **TWEETS**(with text and labeled sentiment)  
+when: **TIME**  
+where: **LOCATIONS**  
+
+But hold on, where does the sentiment come from?  
+Well, the sentiment might be given manually or by a smart semantic analyzer which was built by other dataset, but let's assume the labels are right because there are hundres like us studying on this dataset.
+
+The raw data is shown as following structure:
+```{r echo=F}
+tweets <- read.csv('Tweets.csv',header=T,na.strings =c(' +',''))
+str(tweets)
+```
+
+Clearly the information of the who and what is answered by the text, but when and where can also be important in logic.
+For example, a negative text might be caused by a flight delay, and a delay might be a consequence of a bad weather, they are to be known as the context of text creating, which is also important features for us to dig.  
+
+First thing first, let's RELOAD first!
+```{r message=F,cache=T,warning=F}
+#sourcing tools
+library(twitteR) #read from twitter streaming api
+library(jsonlite) # read from json
+library(readr)    # read files
+
+#dataframe tools
+library(dplyr) 
+library(plyr) 
+library(dplyr)    # data manipulation
+library(stringr)  # text manipulation
+
+#visualization tools
+library(Amelia) #data explore
+library(ggplot2)  
+library(ggthemes) 
+library(wordcloud)
+
+#semantic analysis tools
+library(tm) #get corpus
+library(SnowballC) # stemming 
+library(NLP) #root 
+
+#machine learning tools
+library(caret) #K folds cross validation
+library(MASS) # stepAIC
+library(e1071) #NaiveBayes
+library(leaps) #model selection
+library(bestglm)#model selection 
+library(boot) # cv.glm()
+
+#our functions 
+source(file('airline_utilities.R'))
+```
+
+***
+# 1.See our data  
+To see the data we have to **clean it** first, here are our codes to do so:  
+*To prevent distracting readers from the massive codes, our codes are packed up in functions, and if you are intersted to the details, check our [github gallery](https://github.com/gwds/dmg6/blob/master/code_samples/data_clean-Strayn).*
+
+```{r cache=T,message=F,warnings=F}
+#clean the CLASS 
+tweets$tweet_created <- as.POSIXct(tweets$tweet_created)
+tweets[,sapply(tweets,is.factor)] <- sapply(tweets[,sapply(tweets,is.factor)],as.character)
+#clean the CONTENT
+
+#clean URLs
+tweets$text <- gsub('((http|ftp|https)://)(([a-zA-Z0-9\\._-]+\\.[a-zA-Z]{2,6})|([0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}))(:[0-9]{1,4})*(/[a-zA-Z0-9\\&%_\\./-~-]*)?','URL_LINK_TWEETS',tweets$text)
+
+tweets <- clean_location(tweets) # clean the tweet_coord column
+```
+
+After cleaning we found our data badly broken with NAs, how bad? Check the missmap here:
+![](/home/strayn/R/Rprojects/6103-proposal-milestone3/missmap_tweets.png)
+These broken points are mainly in the locations, timezone and sentiment labels, sentiment labels are important, but why do we have to fix the locations and timezones?  
+Well, that's because they are important to understand the text, because we think the meaning of the text should be determined by 2 points:
+**a. The text itself.**  
+**b. The context where the text was created**  
+
+The timezone and location, which are when and where are related to the point b.
+But right now it's not the priority, we should keep on for other attributes to get a whole view first.  
+Let's just take down the problem and fix it latter.
+
+Well, what about the features of text?
+
+***
+#2.Text Explorating
+We said we have to understand the text, that means to break down the feature text from a big one to smaller fragments which are good at answering our question, which is sentiment in this case.  
+
+Ok break it down... But how?
+To understand a text [we have to realize that there are 3 levels out there](http://www.cstr.ed.ac.uk/emasters/course/natural_lang.html):  
+**a. Lexical level:** stemming, features extracting. 
+**b. Syntactic level:** grammars and parsing.  
+**c. Semantic & Pragmatic level:** logical forms and reasoning, entities identifying.  
+
+In this milestone we will focus on the step a, and try to extract important features out of text and make them the predictors to feed our learner(model like logistics regression, naive bayes and svm).
+
+To extract feature meaning maximize the signal, basically we have 2 ways to do so:
+2.1. We get rid ot the noise to make the real information significant. For example stopwords are such noise which contains "and, is, a, the" but no information.
+2.2. We group the similiar information to make them stronger signal, which is known as stemming. For example words like "complicated, complicate, complicating" contain same information, we have to let our learner know.
+
+To realize the 2 steps we want sentence like:
+>  RT @ScoopDaa: @LALEGGERS Low 70's Forecast For @JetBlue 2016 @LBMarathon = Official Program https://t.co/BoVcrgnOCo https://t.co/qNeLzqlN39
+
+to be processed as this  
+>  rt scoopdaa teamintrain low s forecast jetblue lbmarathon offici program
+
+Here are our codes to do so:
+```{r cache=T,message=F,warning=F}
+temp <- gsub('^@\\w+','',tweets$text) #get rid of the entities
+corpus <- VCorpus(VectorSource(temp)) #save text into corpus
+corpus <- tm_map(corpus, content_transformer(tolower)) # transfor to lower case
+corpus <- tm_map(corpus, PlainTextDocument, lazy = T) # creat a plain text document
+corpus <- tm_map(corpus, removePunctuation)  # remove punctuation
+corpus <- tm_map(corpus, removeWords, stopwords(kind = "english")) # remove stop words
+corpus <- tm_map(corpus, stripWhitespace) #stripe whitespace from the corpus text
+corpus <- tm_map(corpus, stemDocument) #get the stem of the words in our sentence
+```
+*Noticed that the URLs should have already been removed by the 1st cleaning step, thus it's not shown at above code.*  
+*Also noticed that the tolower function might encounter error when dealing with emoji or other non-graphical text, we set a pre cleaning function to deal with it, called tryTolower, again you can check it in our [github gallery](https://github.com/gwds/dmg6/blob/master/code_samples/data_clean-Strayn).*
+```{r cache=T,warning=F,message=F,eval=F}
+#This is the wordcloud after text cleaning:
+wordcloud(corpus,min.freq = 50,random.order = FALSE,scale=c(7, .6),colors=brewer.pal(6, "Dark2"))
+```
+![](/home/strayn/R/Rprojects/6103-proposal-milestone3/wordcloud.png)
+***
+And after doing so we get a corpus which contains necessary information we have, but a [Document Terms Matrix](https://www.quora.com/What-is-a-term-document-matrix) will be more friendly to analysis: 
+```{r cache=T}
+dtm <- DocumentTermMatrix(corpus) #change corpus to Document Terms Matrix
+dtm <- removeSparseTerms(dtm, 0.97) #remove terms which have tiny probability to show up
+findFreqTerms(dtm,5)
+```
+
+In the above codes we extract the important words among texts, and if we group them by the sentiment we have, we will have indicator for certain sentiment! And that's our goal! We've done so in our sample codes, but since the feature engineering requires merging dataset from internet, it's still in the process, so the main idea we want to show in this milestone is to give a whole picture for our thinking process, and if you are interested in analysis detail, please check our [github gallery](https://github.com/gwds/dmg6/tree/master/code_samples/data_clean-Strayn).
+
+***
+
+# 3. How to make a learner.
+Well, a learner needs to be fed by data, and that data has to change along the constants we want to fix by our model. For example if we want to know how much weather influence the sentiments of tweets, at least we have to see different weathers showing up in our dataset.  
+So we have to build a learner with features that are both able to be extended by merging other dataset and are logically related to our question, which is the relationship between sentiment and text in this case.
+
+Our dataset is about user, tweets, time and location, tweets text is apparently the best predictor for tweets sentiment, but sometimes the anlysis for them can be hard, so at this milestone we want to know how well the features other than "text itself" can predict the sentiment of text.
+
+For this quick test we choose to ignore the broken part of our data, which are locations, timezones and sentiment reasons, and focus on data we can get from twitter API, which are airline(we can search tweets by topic of airline), retweet_count, tweet_created. CLearly this is not good enough, so we also decide to extract some quick information from the text,which are length of the text, the number of @ appearing in the text.
+Here are codes for that:
+```{r cache=T}
+library(stringr)
+tweets <- add_feature(tweets) # count the length of every text column, count the number of @ in it too
+#get rid of broken columns
+broken_colnum <- c(4,5,7,9,13,14,15,16)
+cfix_tweets <- tweets[-broken_colnum]
+cfix_tweets[,sapply(cfix_tweets,is.character)] <- as.data.frame(lapply(cfix_tweets[,sapply(cfix_tweets,is.character)],as.factor))
+#show the formula we care
+FORMULA <- get_formula(2,c(4,6,8,9,10,11),cfix_tweets)
+FORMULA
+
+```
+
+Above is the model formula we made by our dataset, and now let's try predict with it to see how well it could do:
+```{r cache=T}
+#get train/test dataset
+train <- get_tt_data(cfix_tweets)[['train']]
+test <- get_tt_data(cfix_tweets)[['test']]
+
+#original model we set in mind
+log_model1 <- glm(FORMULA, data=train, family=binomial)
+log_pred1 <- predict(log_model1, newdata=test, type="response")
+results1 <-table(test$airline_sentiment, log_pred1>.5)
+results1
+
+```
+We see from the results that it can predict the negative sentiment very well, 95.42% of the negative sentiment are correctly predicted by our model.
+But the positive sentiment are poorly predicted, only 24.24% correctly predicted.
+
+Well, we will improve that in the futural milestones, but right now let's continue to model simplification.
+There might be features that provides similiar information, which made our model somehow fatter than it could be, so we should cut off them, to do so we use stepAIC [to most adequately describe the unknown](http://stats.stackexchange.com/questions/577/is-there-any-reason-to-prefer-the-aic-or-bic-over-the-other), and here are the codes for us to do so:
+```{r cache=T}
+library(MASS)
+#find the best formula by stepAIC
+model_full <- glm(FORMULA,train,family = binomial)
+model_0 <- glm(airline_sentiment~1,train,family = binomial)
+feature_selection <- stepAIC(model_0,scope=FORMULA,direction = 'forward')
+```
+
+
+Therefore we find the formula with the best prediction efficiency to be:
+```{r echo=F, cache=T}
+BEST_FORMULA <- as.formula('airline_sentiment ~ text_length + airline + at_count + tweet_created')
+BEST_FORMULA
+```
+
+We compare the prediction power for the 2 formulas:
+```{r cache=T}
+
+#simplified model by AIC
+log_model2 <- glm(BEST_FORMULA, data=train, family=binomial)
+log_pred2 <- predict(log_model2, newdata=test, type="response")
+results2<-table(test$airline_sentiment, log_pred2>.5)
+
+#orginal model prediction power
+results1
+
+#simplified model prediction power
+results2
+
+```
+
+
+From the results, we can tell that the simplified model could do almost the same as our orginal model, so we considering the computing efficiency we should replace the old one with the simplified one.
+
+The same process could be applied by other machine learner, such as decision tree, svm or naive bayes model. Basically this is how far we can achieve without changing model or dataset.
+
+***
+
+# Finally, how improve?
+
+4 ways for us to make it better:  
+1. Fit the prediction results we get from our learner with what we get from semantic API by google, fowllowing is an example of this, more information can be found in our [github gallery](https://github.com/gwds/dmg6/tree/master/results_reports).
+![](/home/strayn/R/Rprojects/6103-proposal-milestone3/Screenshot from 2016-10-14 03-36-07.png)  
+
+2. We will fix our dataset by online API  
+To recover location information, we can group them by [Geocoding API](https://developers.google.com/maps/documentation/geocoding/intro).
+To make the tweet time customized by user's timezone, we can use Geocoding API and [Timezon API](https://developers.google.com/maps/documentation/timezone/intro) to do so.
+To add more feature to know the reason of negative sentiment, we can use location to find weather information by [open weather api](https://openweathermap.org/history), or if we want to know more about the flight information we can use [skyscanner api](http://business.skyscanner.net/portal/en-GB/Documentation/ApiOverview).
+
+3. Explore deeper to twitter streaming api. Our data show text from users to certain topic, well different people have different habit of expressing feelings, so we better customized their sentiment with their historical record on twitter, and [user stream api](https://dev.twitter.com/streaming/userstreams) can help us do that.  
+
+4. Find other dataset. Ultimately we are trying to build a text miner, and that is not neccesearily built on twitter data, we can do it by Amazon or Yelp customer review data too. Those data will have better sentiment measurement, such as score features, so that we can improve our miner easily.  
+
+
+Basically this is what we've done in this milestone, EXPECT US!
