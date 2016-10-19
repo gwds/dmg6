@@ -15,10 +15,13 @@ library(e1071)
 source(file('airline_utilities.R'))
 
 ####get the data and clean it####
-tweets <- read.csv('Tweets.csv',header=T,na.strings =c(' +',''))
+tweets <- read.csv('Tweets.csv',header=T)
+
+tweets$tweet_created <- as.POSIXct(tweets$tweet_created)
+tweets[,sapply(tweets,is.factor)] <- sapply(tweets[,sapply(tweets,is.factor)],as.character)
 
 #make all factor column character class
-tweets <- clean_text(tweets)
+tweets$text <- gsub('((http|ftp|https)://)(([a-zA-Z0-9\\._-]+\\.[a-zA-Z]{2,6})|([0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}))(:[0-9]{1,4})*(/[a-zA-Z0-9\\&%_\\./-~-]*)?','URL_LINK_TWEETS',tweets$text)
 tweets <- clean_location(tweets)
 tweets <- add_feature(tweets)
 
@@ -43,7 +46,7 @@ FORMULA <- get_formula(2,c(4,6,8,9,10,11),cfix_tweets)
 log_model1 <- glm(FORMULA, data=train, family=binomial)
 log_pred1 <- predict(log_model1, newdata=test, type="response")
 table(test$airline_sentiment, log_pred1>.5)
-#with full_model
+#with formula
 #FALSE TRUE
 #negative  2617  110
 #positive   559  177
@@ -60,7 +63,7 @@ BEST_FORMULA <- as.formula('airline_sentiment ~ text_length + airline + at_count
 log_model2 <- glm(BEST_FORMULA, data=train, family=binomial)
 log_pred2 <- predict(log_model2, newdata=test, type="response")
 table(test$airline_sentiment, log_pred2>.5)
-#with full_model
+#with_best formula
 #FALSE TRUE
 #negative  2617  110
 #positive   556  180
@@ -69,45 +72,6 @@ table(test$airline_sentiment, log_pred2>.5)
 
 #PS: another way of finding best features:
 cv.glm(cfix_tweets,log_model1,K=10)$delta[1]
-
-
-
-####BUILD MODEL2, with information for location & timezone,get the subset we want ####
-##get rid of the MOST SEVERE BROKEN columns
-missmap(tweets,rank.order = F)
-severe_broken_colnum <- c(4,5,7,9,15,16)
-cfix_tweets <- tweets[-severe_broken_colnum]
-missmap(cfix_tweets)
-##GET RID OF THE ROWS TOO
-rcfix_tweets <- na.omit(cfix_tweets)
-rcfix_tweets[,sapply(rcfix_tweets,is.character)] <- as.data.frame(lapply(rcfix_tweets[,sapply(rcfix_tweets,is.character)],as.factor))
-
-####MODELING ####
-#get train/test dataset
-train <- get_tt_data(rcfix_tweets)[['train']]
-test <- get_tt_data(rcfix_tweets)[['test']]
-
-FORMULA <- get_formula(2,c(4,6,8,9,10,11,12,13),rcfix_tweets)
-
-#and the prediction results is:
-log_model1 <- glm(FORMULA, data=train, family=binomial)
-log_pred1 <- predict(log_model1, newdata=test, type="response")
-table(test$airline_sentiment, log_pred1>.5)
-#WRONG for broken data
-
-#find the best formula by stepAIC
-model_full <- glm(FORMULA,train,family = binomial)
-model_0 <- glm(airline_sentiment~1,train,family = binomial)
-feature_selection <- stepAIC(model_0,scope=FORMULA,direction = 'forward')
-#
-BEST_FORMULA <- as.formula('airline_sentiment ~ text_length + airline + at_count + tweet_created')
-
-
-#and the prediction results is:
-log_model2 <- glm(BEST_FORMULA, data=train, family=binomial)
-log_pred2 <- predict(log_model2, newdata=test, type="response")
-table(test$airline_sentiment, log_pred2>.5)
-#WRONG for broken data
 
 
 

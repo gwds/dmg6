@@ -1,14 +1,45 @@
-clean_text <- function(tweets){
-  tweets$tweet_created <- as.POSIXct(tweets$tweet_created)
-  tweets[,sapply(tweets,is.factor)] <- sapply(tweets[,sapply(tweets,is.factor)],as.character)
-  #get rid of @
-  #tweets$text <- gsub("^@\\w+ *", "", tweets$text)  # remove @airline
-  #get rid of URL
-  tweets$text <- gsub('((http|ftp|https)://)(([a-zA-Z0-9\\._-]+\\.[a-zA-Z]{2,6})|([0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}))(:[0-9]{1,4})*(/[a-zA-Z0-9\\&%_\\./-~-]*)?','URL_LINK_TWEETS',tweets$text)
-  return(tweets)
-  
-}
+#sourcing tools
+library(twitteR) #read from twitter streaming api
+library(jsonlite) # read from json
+library(readr)    # read files
 
+#dataframe tools
+library(dplyr) 
+library(plyr) 
+library(dplyr)    # data manipulation
+library(stringr)  # text manipulation
+
+#visualization tools
+library(Amelia) #data explore
+library(ggplot2)  
+library(ggthemes) 
+library(wordcloud)
+
+#semantic analysis tools
+library(tm) #get corpus
+library(SnowballC) # stemming 
+library(NLP) #root 
+
+#machine learning tools
+library(caret) #K folds cross validation
+library(MASS) # stepAIC
+library(e1071) #NaiveBayes
+library(leaps) #model selection
+library(bestglm)#model selection 
+library(boot) # cv.glm()
+
+
+clean_text <- function(text){
+  #clean URLs
+  temp <- gsub('((http|ftp|https)://)(([a-zA-Z0-9\\._-]+\\.[a-zA-Z]{2,6})|([0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}))(:[0-9]{1,4})*(/[a-zA-Z0-9\\&%_\\./-~-]*)?','URL_LINK_TWEETS',text) 
+  #clean white space within in punctuation to seperate words cleverly
+  temp <- gsub('[. +]|[ +.]','.',temp)
+  temp <- gsub('[, +]|[ +,]',',',temp)
+  temp <- gsub('[.]','. ',temp)
+  temp <- gsub('[,]',', ',temp)
+  temp <- gsub('. . . ','... ',temp)
+  return(temp) 
+}
 
 clean_location <- function(tweets){
   lat_temp <- character()
