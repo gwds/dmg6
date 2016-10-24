@@ -9,15 +9,9 @@ library(RJSONIO)
 library(stringr)
 
 # Make the twitter dev account for your api keys and connections auth :
-# I made mine , and i got this :  
+# I made mine , and you will receive four credentials from Twitter that allow you to connect to Twitter API with your personal account :  
 
-api_key <- "9FvyWSUFObttIebzBLcC6w7HZ"
-
-api_secret <- "tEYr1JV7SuTvfC1IGpPgwSrcdoQG44dPPytPAFByK9JGqCxwFV"
-
-access_token <- "224414427-thEO7gldhUuRAHVif3lCn9F8CDFcyxspVy1hpXqZ"
-
-access_token_secret <- "33cn18YPUlCG69VGzcSo5mLaP7JeMFpUZYeu7lO0lvIPs"
+api_key, api_secret, access_token, access_token_secret
 
 # Calling the function to connect with twitter api using your auth id & Keys :
 
