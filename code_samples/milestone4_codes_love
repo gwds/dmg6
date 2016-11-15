@@ -1,0 +1,36 @@
+# Naive Bayes Classifier :
+ ## Steps for sampling the  data set for training and testing the tweet dataset.
+
+
+libs<-c("tm","dplyr","SnowballC","caret")
+lapply(libs,library,character.only=TRUE)
+library(caret)
+library(SnowballC)
+set.seed(123)
+Tweets_Training<-read.csv("Tweets_Training.csv",header=TRUE,sep = ",")
+tweets1<-subset(Tweets_Training,Tweets_Training$airline_sentiment %in% c("positive","negative"))
+tweets_train<- as.matrix(tweets1)
+head(tweets_train)
+
+
+indexes<-createDataPartition(tweets_train[,1],p=.7,list=FALSE)
+train.data<-tweets_train[indexes,]
+test.data<-tweets_train[-indexes,]
+prop.table(table(tweets1[,1]))
+prop.table(table(train.data[,1]))
+prop.table(table(test.data[,1]))
+
+
+nrow(tweets1)
+nrow(train.data)
+as.data.frame(train.data)
+nrow(test.data)
+head(train.data)
+## Applying the model on the tweets training and test data :
+library(e1071)
+library(kernlab)
+bow_nb<-naiveBayes(Sentiments~.,data = train_data_99)
+test2_predict<-predict(bow_nb,newdata=Test_comb_data)
+Conf_NB<-confusionMatrix(test2_predict,Test_comb_data[,1],positive = "positive",
+                         dnn=c("Prediction","True"))
+Conf_NB
