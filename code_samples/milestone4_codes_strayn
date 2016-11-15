@@ -1,0 +1,907 @@
+# Analaysis
+library(stringr)
+
+####CLEANING####
+
+####get the data and clean it####
+tweets <- read.csv('Tweets.csv',header=T)
+
+tweets$tweet_created <- as.POSIXct(tweets$tweet_created)
+tweets[,sapply(tweets,is.factor)] <- sapply(tweets[,sapply(tweets,is.factor)],as.character)
+
+#make all factor column character class
+tweets$text <- gsub('((http|ftp|https)://)(([a-zA-Z0-9\\._-]+\\.[a-zA-Z]{2,6})|([0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}))(:[0-9]{1,4})*(/[a-zA-Z0-9\\&%_\\./-~-]*)?','URL_LINK_TWEETS',tweets$text)
+#clean coordinates
+tweets$tweet_coord <- gsub('\\[|\\]','',tweets$tweet_coord)
+tweets$tweet_coord <- gsub(', ',',',tweets$tweet_coord)
+tweets$tweet_coord <- gsub('^,','',tweets$tweet_coord)
+
+#tweets <- clean_loc1ation(tweets)
+tweets <- add_feature(tweets)
+tweets <- as.data.frame(lapply(tweets,clean_na))
+
+#clean locations
+table(is.na(tweets$tweet_location))
+tweets$tweet_location[grep('@',tweets$tweet_location)] <- NA
+tweets$tweet_location[grep('#',tweets$tweet_location)] <- NA
+tweets$tweet_location[grep('!',tweets$tweet_location)] <- NA
+tweets$tweet_location[grep('\\d',tweets$tweet_location)] <- NA
+tweets$tweet_location[grep(':',tweets$tweet_location)] <- NA
+tweets$tweet_location[grep('\\?',tweets$tweet_location)] <- NA
+tweets$tweet_location[grep('\\{|\\}',tweets$tweet_location)] <- NA
+tweets$tweet_location[grep('\\_',tweets$tweet_location)] <- NA
+tweets$tweet_location[grep('[Tt]weet',tweets$tweet_location)] <- NA
+tweets$tweet_location[grep('\\$',tweets$tweet_location)] <-NA
+
+table(is.na(tweets$tweet_location))
+
+
+#add some new column that also have prediction powers over the tweets:
+##text_length over text
+
+
+#clean location++
+###fill location with information from usertimezone
+tweets$tweet_location <- as.character(tweets$tweet_location)
+tweets$user_timezone <- as.character(tweets$user_timezone)
+  tweets$tweet_location[is.na(tweets$tweet_location)==T&is.na(tweets$user_timezone)==F] <-
+    tweets$user_timezone[is.na(tweets$tweet_location)==T&is.na(tweets$user_timezone)==F]
+table(is.na(tweets$tweet_location))
+
+#clean timezone
+#change timezones into readable form
+tweets$user_timezone <- 
+  gsub(
+    'Eastern Time \\(US & Canada\\)',
+    'EST',
+    tweets$user_timezone
+  )
+tweets$user_timezone <- 
+  gsub(
+    'Central Time \\(US & Canada\\)',
+    'CST',
+    tweets$user_timezone
+  )
+tweets$user_timezone <- 
+  gsub(
+    'Pacific Time \\(US & Canada\\)',
+    'PST',
+    tweets$user_timezone
+  )
+tweets$user_timezone <- 
+  gsub(
+    'Quito',
+    'ECT',
+    tweets$user_timezone
+  )
+tweets$user_timezone <-
+  gsub(
+    'Atlantic Time \\(Canada\\)',
+    'AST',
+    tweets$user_timezone
+  )
+tweets$user_timezone <-
+  gsub(
+    'Mountain Time \\(US & Canada\\)',
+    'MDT',
+    tweets$user_timezone
+  )
+
+tweets$user_timezone <-
+  gsub(
+    'Arizona',
+    'MST',
+    tweets$user_timezone
+  )
+
+tweets$user_timezone <-
+  gsub(
+    'London',
+    'EST',
+    tweets$user_timezone
+  )
+
+tweets$user_timezone <-
+  gsub(
+    'Alaska',
+    'AKST',
+    tweets$user_timezone
+  )
+tweets$user_timezone <-
+  gsub(
+    'Sydney',
+    'AEDT',
+    tweets$user_timezone
+  )
+tweets$user_timezone <-
+  gsub(
+    'Hawaii',
+    'HST',
+    tweets$user_timezone
+  )
+tweets$user_timezone <-
+  gsub(
+    'America*',
+    'EST',
+    tweets$user_timezone
+  )
+#http://localtimes.info/search/?s=Athens&x=0&y=0
+#'Pacific Time (US & Canada)','PST'
+#'Quito','ECT'
+#'Atlantic Time (Canada)','AST'
+#'Hawaii','HST'
+#'Eastern Time (US & Canada)','EST'
+#'Mountain Time (US & Canada)','MDT'
+#'Central Time (US & Canada)','CST'
+#'Caracas','VET'
+#'Taipei','CST'
+#'Stockholm','CET'
+#'Madrid','CET'
+#'London','EST'
+#'Santiago','BRST'
+#'Sydney','AEDT'
+#'Tehran','IRST'
+#'Brisbane','AEST'
+#'Kuala Lumpur','MYT'
+
+#levels(tweets$user_timezone)
+#'Abu Dhabi','GST'
+#'Adelaide','ACDT'
+#'Alaska','AKST'
+#'Atikokan','EST'
+#'EST'
+#'EST'
+#'EST'
+#'Amsterdam','CET'
+#'Arizona','MST'
+#'Athens','EET'
+
+#clean time
+temp <- as.character(tweets$tweet_created,usetz=T)
+for(i in 1:length(tweets$user_timezone)){
+  if(!is.na(tweets$user_timezone[i])){
+    temp[i] <- format(tweets$tweet_created[i], tz=tweets$user_timezone[i],usetz=TRUE)
+  }
+
+}
+tweets$tweet_created <- temp
+
+
+
+#GIS information recovery
+#get from google
+address_list <- list()
+count_inf <- 0
+count_all <- 0
+
+for(address in tweets$tweet_location[1:nrow(tweets)]){
+  tryCatch(
+    {
+      count_all <- count_all + 1
+      if(address != ''){
+        address_list <- c(address_list,list(get_location(address)))
+        count_inf <- count_inf+1
+        print(count_all)
+      }
+      else{
+        address_list <- c(address_list,list(''))
+      }
+    },error=function(e){
+      #catch all error address for futrue investigation
+      ERROR_address <- paste('#ERROR_address_in_cleaning_loop: ',address,sep = '')
+      #      address_list <- c(address_list,list(ERROR_address))
+      print(cat('ERROR : ',conditionMessage(e),'\n','LOCATION IS : ','\n',ERROR_address))
+      eval(parse(text = paste(substitute(address_list),' <<- c(',substitute(address_list),',list(ERROR_address))',sep='')))
+      
+      
+    }
+  )
+  
+}
+
+result <- address_list
+
+####1.change all location to coordinates####
+coords <- numeric()
+for(i in 1:length(result)){
+  #get coordinates
+  if(is.list(result[[i]])){
+    #if(length(result[[i]][[1]]['geometry'][[1]][[2]])!=0){
+    coord <- result[[i]][[1]][['geometry']][['location']][1,]
+    coord <- paste(coord[[1]],',',coord[[2]],sep = '')
+    coords <- c(coords,coord)
+    count <- length(coords)
+    if(count > i){
+      print(i)
+      break
+    }
+    #}
+  }
+  else if(is.character(result[[i]])){
+    coords <- c(coords,'')
+  }
+}
+
+coords <- gsub('^,','',coords)
+
+
+####2.recover the location back in a format of NATION/STATE/CITY ####
+#get the CLASSIFIER to build our cities
+all_df_N <- numeric()
+for(i in 1:length(result)){
+  if(is.list(result[[i]])){
+    one_df_N <- length(result[[i]][[1]][["address_components"]][[1]][[1]])
+    all_df_N <- c(all_df_N,one_df_N)
+  }
+  else{
+    all_df_N <- c(all_df_N,-1)
+  }
+}
+table(all_df_N)
+
+
+
+
+cities <- character()
+states <- character()
+countries <- character()
+
+T_finder <- sapply(result,is.list)
+result_list <- result[T_finder]
+#loop all the result that have information(which is a list)
+for(i in 1:length(result_list)){
+  print(i)
+  #catch the dataframe in every list
+  temp_df <- result_list[[i]][[1]][["address_components"]][[1]]
+  row_num <- nrow(temp_df)
+  #select only those dataframes that have informations
+  if(length(row_num)!=0){
+    for(i in ceiling(row_num/2):row_num){
+      if('country' %in% temp_df$types[[i]]){
+        country_row_num <- i
+        break
+      }
+    }
+    if(country_row_num >=3){
+      cities<-c(cities,temp_df$long_name[country_row_num-2])
+      states<-c(states,temp_df$long_name[country_row_num-1])
+      countries <- c(countries,temp_df$long_name[country_row_num])
+    }
+    else if(country_row_num==2){
+      cities<-c(cities,'')
+      states<-c(states,temp_df$long_name[country_row_num-1])
+      countries <- c(countries,temp_df$long_name[country_row_num])
+    }
+    else if(country_row_num==1){
+      cities<-c(cities,'')
+      states<-c(states,'')
+      countries <- c(countries,temp_df$long_name[country_row_num])
+    }
+    else{
+      cities<-c(cities,'')
+      states<-c(states,'')
+      countries <- c(countries,'')
+    }
+    
+  }
+  else{
+    cities<-c(cities,'')
+    states<-c(states,'')
+    countries <- c(countries,'')
+  }
+  
+}
+#const
+tweet_cities <- gsub('FALSE','',T_finder)
+tweet_states <- gsub('FALSE','',T_finder)
+tweet_countries <- gsub('FALSE','',T_finder)
+tweet_cities[T_finder] <- cities
+tweet_states[T_finder] <- states
+tweet_countries[T_finder] <- countries
+
+
+
+#replace all location with more neat ones from google
+new_locations <- character()
+for(i in 1:length(result_list)){
+  new_location <- result_list[[i]][[1]][['formatted_address']][1]
+  if(length(new_location)!=0){
+    new_locations <- c(new_locations,new_location)
+  }
+  else{
+    new_locations <- c(new_locations,'')
+  }
+  
+}
+tweet_new_locations <- gsub('FALSE','',T_finder)
+tweet_new_locations[T_finder] <- new_locations
+
+
+
+####3.get timezone over that coordinates ####
+#we need timestamp and coords
+timestamp <- as.numeric(tweets$tweet_created)
+#get timezone_list
+timezone_list <- list()
+count_all <- 0
+count_inf <- 0
+timezone_list <- list()
+for(i in 1:nrow(tweets)){
+  tryCatch(
+    {
+      count_all <- count_all + 1
+      if(coords[i] != ''){
+        timezone_list <- c(timezone_list,list(get_timezone(coords[i],timestamp[i])))
+        count_inf <- count_inf+1
+        print(count_all)
+      }
+      else{
+        timezone_list <- c(timezone_list,list(''))
+      }
+    },error=function(e){
+      #catch all error address for futrue investigation
+      ERROR_coords <- paste('#ERROR_coords_in_cleaning_loop: ',coords[i],sep = '')
+      #      address_list <- c(address_list,list(ERROR_address))
+      print(cat('ERROR : ',conditionMessage(e),'\n','COORDINATE IS : ','\n',ERROR_coords))
+      eval(parse(text = paste(substitute(timezone_list),' <<- c(',substitute(timezone_list),',list(ERROR_coords))',sep='')))
+    }
+  )
+}
+
+result <- timezone_list
+
+#get tzone
+tzones <- numeric()
+for(i in 1:length(result)){
+  #get coordinates
+  if(is.list(result[[i]])){
+    if(length(result[[i]][['timeZoneId']])!=0){
+      tzone <- result[[i]][['timeZoneId']]
+      tzones <- c(tzones, tzone)  
+    }
+    else if(length(result[[i]][['timeZoneId']])==0){
+      tzones <- c(tzones,NA)
+      
+    }
+    
+  }
+  else{
+    tzones <- c(tzones,NA)
+  }
+  
+}
+
+
+
+
+#NOW we get what we need, let's fix the TIME and SPACE information in tweets
+####1.time_zone fix, check where our user is when they tweeted####
+library(lubridate)
+created_tzone <- character()
+for(i in 1:length(tzones)){
+  if(!is.na(tzones[i])){
+    one_created_tzone <- format(tweets$tweet_created[i], tz=tzones[i],usetz=TRUE)
+    created_tzone <- c(created_tzone,one_created_tzone)
+
+  }
+# format function cannot identify the timezone description of default tweets  
+#  else if(!is.na(tweets$user_timezone[i])){
+#    one_created_tzone <- format(tweets$tweet_created[i], tz=tweets$user_timezone[i],usetz=TRUE)
+#    created_tzone <- c(created_tzone,one_created_tzone)
+#  }
+  else{
+    created_tzone <- c(created_tzone,NA)
+  }
+  
+}
+
+#Now timezone recovery is done
+#this is the unknwn timezone we used to have for original data
+table(is.na(tweets$user_timezone))
+#this is the unknown timezone we used to have our updated data
+table(is.na(tweets$user_timezone)==T&is.na(created_tzone)==T)
+#we recover 1947 timezone information by locations!!
+#and we also make the data organized enough for us to extract the hour in the day out of it
+
+#combine the recovered timezone data and the original data 
+new_timezone <- rep('',length(created_tzone))
+new_timezone[!is.na(tweets$user_timezone)] <- format(tweets$tweet_created[!is.na(tweets$user_timezone)],usetz=T)
+new_timezone[!is.na(created_tzone)] <- format(tweets$tweet_created[!is.na(created_tzone)],usetz=T)
+
+created_hour <- sapply(new_timezone,
+                       function(x){
+                         if(x!=''){
+                           hour(x)
+                         }
+                         else{
+                           NA
+                         }
+                       })
+created_hour <- sapply(created_hour,as.factor)
+
+#because we can only store time in one timezone in a column of time,so here I won't transform tzone to another format of Posixct, and I cannot
+#created_tzone <- ymd_hms(created_tzone)
+
+
+
+
+
+str(tweets)
+
+sapply(dt[sapply(dt,is.character)],function(x) x <- gsub('',NA,x))
+
+
+
+#This function replace all the string contains nothing('') to NAs
+clean_na <- function(x){
+  x[!grepl('[^w]',x)] <- NA
+  return(x)
+}
+
+coords <- clean_na(coords)
+tweet_countries <- clean_na(tweet_countries)
+tweet_states <- clean_na(tweet_states)
+tweet_cities <- clean_na(tweet_cities)
+tweet_new_locations <- clean_na(tweet_new_locations)
+tweets[sapply(tweets,is.character)] <- sapply(tweets[sapply(tweets,is.character)],clean_na)
+
+
+dt <- data.frame(tweets,NEW_COORD=coords,NEW_LOCATIONS=tweet_new_locations,NEW_COUNTRIES=tweet_states,
+                 NEW_STATES=tweet_states,NEW_CITIES=tweet_cities,
+                 NEW_HOUR=created_hour,NEW_CREATED_TIMEZONE=new_timezone)
+
+####EXPLORATION####
+library(Amelia)
+missmap(dt,rank.order = T,
+        col = c('black','green'),
+        x.cex=0.6,y.cex=0.1,legend = F,main = 'Fixed Data2')
+
+
+
+####MODELING####
+##data preparation
+dt1 <- dt[-sapply(c('tweet_id',#it's so big
+                    'airline_sentiment_gold', #it's so sparse
+                    'airline_sentiment_confidence',
+                    'negativereason_confidence','negativereason_gold',
+                    'NEW_STATES',
+                    'name', #it's so much
+                    'tweet_coord', 'NEW_COORD',# it's no use
+                    'tweet_created','NEW_CREATED_TIMEZONE', #it's time feature, cannot be analyze this way
+                    'tweet_location','NEW_LOCATIONS', #it's old and so sparse
+                    'NEW_CITIES' #it's too much,increase time so much and make data so sparse
+),grep,names(dt))]
+
+#replace all the NAs with "unknown"
+#for(i in 1:ncol(dt1)){
+#  dt1[[i]] <- as.character(dt1[[i]])
+#  if(NA %in% dt1[[i]]){
+#    dt1[i][is.na(dt1[i])] <- 'unkown'
+#  }
+#  dt1[[i]] <- as.factor(dt1[[i]])
+#}
+
+dt1$text <- NULL
+dt1$retweet_count <- as.integer(dt1$retweet_count)
+dt1$NEW_HOUR <- as.integer(dt1$NEW_HOUR)
+dt1$at_count<-as.integer(dt1$at_count)
+dt1$text_length <- as.integer(dt1$text_length)
+
+dt2 <- dt1[-2]
+dt1 <- dt1[-c(2,5,9)]
+
+
+
+sapply(dt1,function(x) NA %in% x)
+
+
+#prediction_model
+library(rpart)
+library(nnet)
+library(MASS)
+
+#0.let's test model without NEW_HOUR first
+dt0 <- dt1[-7]
+train <- get_tt_data(dt1)[['train']]
+test <- get_tt_data(dt1)[['test']]
+FORMULA <- get_formula(1,2:6,dt0)
+
+md0 <- multinom(airline_sentiment~1,data = train)
+md3 <- multinom(FORMULA,data = train)
+aic_bw3 <- stepAIC(md3,airline_sentiment~1,direction = 'backward')
+aic_fw3 <- stepAIC(md0,FORMULA,direction = 'forward')
+aic_bt3 <- stepAIC(md3,airline_sentiment~1,direction = 'both')
+prd3 <- predict(md3, newdata=test)
+
+#get the tvalue
+summary(aic_bt3)[[31]]/summary(aic_bt3)[[32]]
+summary(md3)[[30]]/summary(md3)[[31]]
+#get the residuals
+colSums(residuals(aic_bt3)^2)
+model0 <- md3
+result0 <- colSums(residuals(md3)^2)
+result0_cm <- confusionMatrix(prd3,test[[1]])
+
+
+#1.let's firstly train with dt1####
+train <- get_tt_data(dt1)[['train']]
+test <- get_tt_data(dt1)[['test']]
+FORMULA <- get_formula(1,2:7,dt1)
+md0 <- glm(airline_sentiment~1,data = train,family = binomial(link='logit'))
+md1 <- glm(FORMULA, data=train,family=binomial(link = 'logit'))
+aic_bw1 <- stepAIC(md1,airline_sentiment~1,direction = 'backward')
+aic_fw1 <- stepAIC(md0,FORMULA,direction = 'forward')
+aic_bt1 <- stepAIC(md1,airline_sentiment~1,direction = 'both')
+prd1 <- predict(md1, newdata=test)
+#get the tvalue
+summary(aic_bt1)
+summary(md1)
+#get the residuals
+sum(residuals(aic_bw1)^2)
+sum(residuals(md1)^2)
+
+#md2 <- rpart(FORMULA,data=train)
+
+md0 <- multinom(airline_sentiment~1,data = train)
+md3 <- multinom(FORMULA,data = train)
+aic_bw3 <- stepAIC(md3,airline_sentiment~1,direction = 'backward')
+aic_fw3 <- stepAIC(md0,FORMULA,direction = 'forward')
+aic_bt3 <- stepAIC(md3,airline_sentiment~1,direction = 'both')
+prd3 <- predict(md3, newdata=test)
+
+#get the tvalue
+summary(aic_bt3)[[31]]/summary(aic_bt3)[[32]]
+summary(md3)[[30]]/summary(md3)[[31]]
+#get the residuals
+colSums(residuals(aic_bt3)^2)
+model1 <- md3
+result1 <- colSums(residuals(md3)^2)
+result1_cm <- confusionMatrix(prd3,test[[1]])
+
+
+
+#CONCLUSION:
+#1. we should choose multinom than glm because it's mult responses prediction model
+#2. the count of @ in text will have significant influence when it's bigger than 2
+#3. the added feature NEW_HOUR which indicates the exact time of user's timezone when he
+#   tweets seems doesn't have very strong relationship with the sentiment
+#the results seems to be poorly predicted, let's try improve it.
+
+#2.let's train with dt2####
+#  which contains information of timezone and location
+
+train <- get_tt_data(dt2)[['train']]
+test <- get_tt_data(dt2)[['test']]
+FORMULA <- get_formula(1,2:9,dt2)
+md0 <- glm(airline_sentiment~1,data = train,family = binomial(link='logit'))
+md1 <- glm(FORMULA, data=train,family=binomial(link = 'logit'))
+
+aic_bw1 <- stepAIC(md1,airline_sentiment~1,direction = 'backward')
+aic_fw1 <- stepAIC(md0,FORMULA,direction = 'forward')
+aic_bt1 <- stepAIC(md1,airline_sentiment~1,direction = 'both')
+prd1 <- predict.glm(md1, newdata=test)
+#get the tvalue
+summary(aic_bt1)
+summary(md1)
+#get the residuals
+sum(residuals(aic_bw1)^2)
+sum(residuals(md1)^2)
+
+#CONCLUSION
+#all new added information of timezone and countries has unsignificant influence over sentiment
+
+
+#md2 <- rpart(FORMULA,data=train)
+
+md0 <- multinom(airline_sentiment~1,data = train)
+md3 <- multinom(FORMULA,data = train)
+
+aic_bw3 <- stepAIC(md3,airline_sentiment~1,direction = 'backward')
+aic_fw3 <- stepAIC(md0,FORMULA,direction = 'forward')
+aic_bt3 <- stepAIC(md3,airline_sentiment~1,direction = 'both')
+prd3 <- predict(md3, newdata=test)
+
+#get the tvalue
+summary(aic_bt3)[[31]]/summary(aic_bt3)[[32]] #the AIC process break down because of sparse terms
+summary(md3)[[30]]/summary(md3)[[31]]
+#CONCLUSION
+#1. usertimezone predictors:
+#standard >5
+#              neutral positive   n
+#Brasilia               -16       >10
+#Buenos Aires           114       >10
+#Wellington             5.93      1
+
+#2. countries seems has more prediction power
+#standard >5
+#              neutral positive n
+#Argentina             114      >10
+#Brazil                -16      >10
+#Canada        5.68             >10
+#China         -9.81            >10
+#Ecuador      4.95              >10
+#Hong Kong    8.83              >10
+#India        7                 >10
+#Ireland      15.7              10
+#Jamaica      8.05              7
+
+#3. when we take consideration of the countries and timezones, the influence of tweet_time(NEW_HOUR) increases significantly.
+
+
+#get the residuals
+colSums(residuals(aic_bt3)^2)
+model2 <- md3
+result2 <- colSums(residuals(md3)^2)
+result2_cm <- confusionMatrix(prd3,test[[1]])
+
+
+
+#3. let's keep improve dt2 by conclusion of 2####
+#we want to merge the sparse categories(which contain few observations)
+###get the NEW_COUNTRIES columns ready
+dt3 <- dt2
+temp <- as.character(dt3$NEW_COUNTRIES)
+most_cates <- c(names(sort(table(temp),decreasing = T)[1:8]),
+                'Argentina',
+                'Brazil',
+                'Canada',
+                'China',
+                'Ecuador',
+                'Hong Kong',
+                'India'
+#                'Ireland',
+#                'Jamaica'
+                )
+temp <-sapply(temp,function(x){
+  if(x %in% most_cates){
+    print(x)
+  }
+  else{
+    x <- 'others'
+  }
+})
+dt3$NEW_COUNTRIES <- as.factor(temp)
+
+###get the user_timezone to be ready
+temp <- as.character(dt3$user_timezone)
+most_cates <- c(names(sort(table(temp),decreasing = T)[1:8]),
+                'Brasilia',
+                'Buenos Aires'
+#                'Wellington'
+)
+temp <-sapply(temp,function(x){
+  if(x %in% most_cates){
+    print(x)
+  }
+  else{
+    x <- 'others'
+  }
+})
+dt3$user_timezone <- as.factor(temp)
+
+
+
+
+train <- get_tt_data(dt3)[['train']]
+test <- get_tt_data(dt3)[['test']]
+FORMULA <- get_formula(1,2:9,dt3)
+md0 <- glm(airline_sentiment~1,data = train,family = binomial(link='logit'))
+md1 <- glm(FORMULA, data=train,family=binomial(link = 'logit'))
+
+aic_bw1 <- stepAIC(md1,airline_sentiment~1,direction = 'backward')
+aic_fw1 <- stepAIC(md0,FORMULA,direction = 'forward')
+aic_bt1 <- stepAIC(md1,airline_sentiment~1,direction = 'both')
+prd1 <- predict.glm(md1, newdata=test)
+#get the tvalue
+summary(aic_bt1)
+summary(md1)
+#get the residuals
+sum(residuals(aic_bw1)^2)
+sum(residuals(md1)^2)
+
+#CONCLUSION
+#all new added information of timezone and countries has unsignificant influence over sentiment
+
+
+#md2 <- rpart(FORMULA,data=train)
+
+md0 <- multinom(airline_sentiment~1,data = train)
+md3 <- multinom(FORMULA,data = train)
+
+aic_bw3 <- stepAIC(md3,airline_sentiment~1,direction = 'backward')
+aic_fw3 <- stepAIC(md0,FORMULA,direction = 'forward')
+aic_bt3 <- stepAIC(md3,airline_sentiment~1,direction = 'both')
+prd3 <- predict(md3, newdata=test)
+
+
+#get the tvalue
+summary(aic_bt3)
+summary(md3)
+#get the residuals
+colSums(residuals(aic_bt3)^2)
+model3 <- md3
+result3 <- colSums(residuals(md3)^2)
+result3_cm <- confusionMatrix(prd3,test[[1]])
+
+#4.ordinary merge
+#try merge the categories with most observations
+library(dplyr)
+library(plyr)
+dt4 <- dt2
+sort(table(dt4$NEW_COUNTRIES))
+sort(table(dt4$user_timezone))
+
+###get the NEW_COUNTRIES columns ready
+temp <- as.character(dt4$NEW_COUNTRIES)
+dt4$NEW_COUNTRIES <- as.character(dt4$NEW_COUNTRIES)
+dt4$NEW_COUNTRIES[!(temp == 'United States'|temp == 'unkown')] <- 'abroad'
+dt4$NEW_COUNTRIES <- as.factor(dt4$NEW_COUNTRIES)
+
+###get the user_timezone to be ready
+temp <- dt4
+sort(table(dt4$user_timezone))
+most_cates <- names(sort(table(dt4$user_timezone),decreasing = T)[1:10])
+dt4$user_timezone <- as.character(dt4$user_timezone)
+dt4$user_timezone <-sapply(dt4$user_timezone,function(x){
+  if(x %in% most_cates){
+    print(x)
+  }
+  else{
+    x <- 'others'
+  }
+})
+dt4$user_timezone <- as.factor(dt4$user_timezone)
+
+
+
+
+train <- get_tt_data(dt4)[['train']]
+test <- get_tt_data(dt4)[['test']]
+FORMULA <- get_formula(1,2:9,dt4)
+md0 <- glm(airline_sentiment~1,data = train,family = binomial(link='logit'))
+md1 <- glm(FORMULA, data=train,family=binomial(link = 'logit'))
+
+aic_bw1 <- stepAIC(md1,airline_sentiment~1,direction = 'backward')
+aic_fw1 <- stepAIC(md0,FORMULA,direction = 'forward')
+aic_bt1 <- stepAIC(md1,airline_sentiment~1,direction = 'both')
+prd1 <- predict.glm(md1, newdata=test)
+#get the tvalue
+summary(aic_bt1)
+summary(md1)
+#get the residuals
+sum(residuals(aic_bw1)^2)
+sum(residuals(md1)^2)
+
+#CONCLUSION
+#all new added information of timezone and countries has unsignificant influence over sentiment
+
+
+#md2 <- rpart(FORMULA,data=train)
+
+md0 <- multinom(airline_sentiment~1,data = train)
+md3 <- multinom(FORMULA,data = train)
+
+aic_bw3 <- stepAIC(md3,airline_sentiment~1,direction = 'backward')
+aic_fw3 <- stepAIC(md0,FORMULA,direction = 'forward')
+aic_bt3 <- stepAIC(md3,airline_sentiment~1,direction = 'both')
+prd3 <- predict(md3, newdata=test)
+
+
+#get the tvalue
+summary(aic_bt3)
+summary(md3)
+#get the residuals
+colSums(residuals(aic_bt3)^2)
+model4 <- md3
+result4 <- colSums(residuals(md3)^2)
+result4_cm <- confusionMatrix(prd3,test[[1]])
+
+
+#now, all done, let's check the result
+result0_cm
+result1_cm
+result2_cm
+result3_cm
+result4_cm
+
+
+
+
+
+#well it's still poorly predicted, let's get some insight from the data
+####graph analysis####
+
+library(ggplot2)
+library(gridExtra)
+blank_theme = theme_minimal() + theme(
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  panel.border = element_blank(),
+  axis.ticks = element_blank(),
+  plot.title = element_text(size = 14, face = 'bold') )
+
+#about just sentiment
+smallData = as.data.frame(prop.table(table(dt2$airline_sentiment)))
+colnames(smallData) = c('Sentiment', 'Frequency')
+gbar = ggplot(smallData, aes(x = Sentiment, y = Frequency, fill = Sentiment))
+plot1 = gbar +
+  geom_bar(stat = 'identity') + 
+  ggtitle("Overall Sentiment") + 
+  theme(plot.title = element_text(size = 14, face = 'bold', vjust = 1),
+        axis.title.y = element_text(vjust = 2), 
+        axis.title.x = element_text(vjust = -1))
+
+
+gpie = ggplot(smallData, aes(x = "Sentiment", y = Frequency, fill = Sentiment))
+plot2 = gpie +
+  geom_bar(stat = 'identity') +
+  coord_polar("y", start = 0) + 
+  blank_theme +
+  theme(axis.title.x = element_blank()) +
+  geom_text(aes(y = Frequency/3 +
+  c(0, cumsum(Frequency)[-length(Frequency)]),label = round(Frequency, 2)), size = 4) +
+  ggtitle('Overall Sentiment')
+
+grid.arrange(plot1, plot2, ncol = 1, nrow = 2)
+
+
+#about airline
+smallData = as.data.frame(prop.table(table(dt2$airline_sentiment, dt2$airline)))
+colnames(smallData) = c('Sentiment', 'Airline', 'Percentage_Tweets')
+gbar = ggplot(smallData, aes(x = Airline, y = Percentage_Tweets, fill = Sentiment)) + 
+  ggtitle('Proportion of Tweets per Airline') +
+  theme(plot.title = element_text(size = 14, face = 'bold', vjust = 1), axis.title.x = element_text(vjust = -1))
+
+plot1 = gbar + geom_bar(stat = 'identity')
+plot2 = gbar + geom_bar(stat = 'identity', position = 'fill')
+
+grid.arrange(plot1, plot2, ncol = 1, nrow = 2)
+
+#about created HOUR
+smallData = as.data.frame(prop.table(table(dt2$airline_sentiment, dt2$NEW_HOUR)))
+colnames(smallData) = c('Sentiment', 'HOUR', 'Percentage_Tweets')
+gbar = ggplot(smallData, aes(x = HOUR, y = Percentage_Tweets, fill = Sentiment)) + 
+  ggtitle('Proportion of Tweets per HOUR') +
+  theme(plot.title = element_text(size = 14, face = 'bold', vjust = 1), axis.title.x = element_text(vjust = -1))
+
+plot1 = gbar + geom_bar(stat = 'identity')
+plot2 = gbar + geom_bar(stat = 'identity', position = 'fill')
+
+grid.arrange(plot1, plot2, ncol = 1, nrow = 2)
+
+#about country
+smallData = as.data.frame(prop.table(table(dt3$airline_sentiment, dt3$NEW_COUNTRIES)))
+colnames(smallData) = c('Sentiment', 'COUNTRIES', 'Percentage_Tweets')
+gbar = ggplot(smallData, aes(x = COUNTRIES, y = Percentage_Tweets, fill = Sentiment)) + 
+  ggtitle('Proportion of Tweets per COUNTRIES') +
+  theme(plot.title = element_text(size = 14, face = 'bold', vjust = 1), axis.title.x = element_text(vjust = -1))
+
+plot1 = gbar + geom_bar(stat = 'identity')
+plot2 = gbar + geom_bar(stat = 'identity', position = 'fill')
+
+grid.arrange(plot1, plot2, ncol = 1, nrow = 2)
+
+
+#about timezone
+smallData = as.data.frame(prop.table(table(dt$airline_sentiment, dt$user_timezone)))
+colnames(smallData) = c('Sentiment', 'TIMEZONE', 'Percentage_Tweets')
+gbar = ggplot(smallData, aes(x = TIMEZONE, y = Percentage_Tweets, fill = Sentiment)) + 
+  ggtitle('Proportion of Tweets per TIMEZONE') +
+  theme(plot.title = element_text(size = 14, face = 'bold', vjust = 1), axis.title.x = element_text(vjust = -1))
+
+plot1 = gbar + geom_bar(stat = 'identity')
+plot2 = gbar + geom_bar(stat = 'identity', position = 'fill')
+
+grid.arrange(plot1, plot2, ncol = 1, nrow = 2)
+
+
+
+
+####text_model improves the prediction_model####
+#split data
+ndt <- dt1[dt1$airline_sentiment=='negative',]
+pdt <- dt1[dt1$airline_sentiment=='positive',]
+nudt <- dt1[dt1$airline_sentiment=='nuetral',]
+
+
+
